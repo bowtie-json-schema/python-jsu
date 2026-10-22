@@ -135,7 +135,9 @@ class Runner:
                 vers_cmd = ["java", "--version"]
             case "perl":  # requires PERLLIB
                 self.output = TMP / "schema.pl"
-                self.runner = ["perl", str(self.output)]
+                # The generated script's #! line may include -CDSA, which
+                # perl only accepts if it's on the command line too.
+                self.runner = ["perl", "-CDSA", str(self.output)]
                 # perl --version is too verbose, use a short script
                 vers_cmd = ["perl", "-e", 'print "Perl $^V\n"']
             case "plpgsql":  # requires a running Postgres
