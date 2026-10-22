@@ -11,6 +11,7 @@ then the generated validator script or executable to validate each test.
 from pathlib import Path
 import hashlib
 import json
+import logging
 import platform
 import subprocess
 import sys
@@ -49,6 +50,26 @@ TMP: Path = Path(__file__).parent / "work"
 
 # environment variables
 ENV: Path = Path(__file__).parent / ".env"
+
+
+class Messages(logging.Handler):
+    """Collect log messages instead of writing them to standard error.
+
+    jsutils logs warnings to standard error, but Bowtie treats a harness
+    which writes there and then responds slowly as one which crashed.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.messages: list[str] = []
+
+    def emit(self, record: logging.LogRecord):
+        self.messages.append(self.format(record))
+
+
+# replaces the standard error handler jsutils installs with basicConfig
+MESSAGES = Messages()
+logging.root.handlers = [MESSAGES]
 
 
 def get_version(cmd: list[str]) -> str:
@@ -114,7 +135,9 @@ class Runner:
                 vers_cmd = ["java", "--version"]
             case "perl":  # requires PERLLIB
                 self.output = TMP / "schema.pl"
-                self.runner = ["perl", str(self.output)]
+                # The generated script's #! line may include -CDSA, which
+                # perl only accepts if it's on the command line too.
+                self.runner = ["perl", "-CDSA", str(self.output)]
                 # perl --version is too verbose, use a short script
                 vers_cmd = ["perl", "-e", 'print "Perl $^V\n"']
             case "plpgsql":  # requires a running Postgres
@@ -276,6 +299,7 @@ class Runner:
 
         reg_files: set[str] = set()
         results: JsonArray = []
+        MESSAGES.messages.clear()
 
         try:
             # register case-specific remote schemas
@@ -294,10 +318,13 @@ class Runner:
             assert len(results) == len(tests), "one result per test"
 
         except Exception:  # an internal error occurred
+            context: JsonObject = {"traceback": traceback.format_exc()}
+            if MESSAGES.messages:
+                context["log"] = list(MESSAGES.messages)
             return {
                 "errored": True,
                 "seq": req["seq"],
-                "context": {"traceback": traceback.format_exc()},
+                "context": context,
             }
 
         finally:
