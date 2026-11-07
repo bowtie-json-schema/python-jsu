@@ -274,6 +274,18 @@ class Runner:
         description = case.get("description")
         assert description is None or isinstance(description, str)
 
+        if req.get("output") == "annotations":
+            return {
+                "seq": req["seq"],
+                "results": [
+                    {
+                        "skipped": True,
+                        "message": "jsu does not support annotation collection",
+                    }
+                    for _ in tests
+                ],
+            }
+
         reg_files: set[str] = set()
         results: JsonArray = []
 
